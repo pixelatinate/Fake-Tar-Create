@@ -50,11 +50,6 @@ int outputFNSize( int FNSize ){
     return 0 ;
 }
 
-// Prints a string in hex
-void outputHex( const char *string ){
-    fwrite( string, sizeof(char), strlen(string), stdout ) ;
-}
-
 // Prints out the file's inode
 int outputINode( unsigned long inode ){
     int j ;
@@ -91,8 +86,8 @@ int outputModTime( long modTime ){
     return 0 ;
 }
 
-// I can probably remove this function(?)
-filePaths *initializeStruct( char *relativePath, char *absolutePath, struct stat buf ){
+// Initialize/allocate space for the struct
+filePaths *allocate( char *relativePath, char *absolutePath, struct stat buf ){
     filePaths *str = malloc( sizeof( filePaths ) ) ;
     str->relativePath = strdup( relativePath ) ;
     str->absolutePath = strdup( absolutePath ) ;
@@ -112,62 +107,61 @@ void readDirectory( const char *fileName, JRB inodeTree, char *relativePath ){
     filePaths *outputString ;
     filePaths *tempString ;
     
-    int exists ;
-
     DIR *directory = opendir(fileName) ;
         
-    char *newPath = (char *) malloc( ( strlen(fileName) + 258 ) * sizeof(char) ) ;
-    char *newRelativePath = (char *) malloc( ( strlen(relativePath) + 258 ) * sizeof(char) ) ;
+    char *newPath = (char*) malloc( ( strlen(fileName) + 258 ) * sizeof(char) ) ;
+    char *newRelativePath = (char*) malloc( ( strlen(relativePath) + 258 ) * sizeof(char) ) ;
     
-    for ( de = readdir(directory) ; de != NULL ; de = readdir(directory) ) {
-        if (strcmp(de->d_name, ".") == 0) {
-            exists = lstat(fileName, &buf);
-            
-			if (jrb_find_gen(inodeTree, new_jval_l(buf.st_ino), compare) == NULL) {
-				jrb_insert_gen(inodeTree, new_jval_l(buf.st_ino), new_jval_i(0), compare);
-				
-				outputFNSize(strlen(relativePath));
-				outputHex(relativePath);
-				outputINode(buf.st_ino);
-				outputMode(buf.st_mode);
-				outputModTime(buf.st_mtime);
+    // Read what's in the directory 
+    for( de = readdir(directory) ; de != NULL ; de = readdir(directory) ){
+        // If it's in there...
+        if ( strcmp( de->d_name, "." ) == 0 ){
+            int check = lstat( fileName, &buf ) ;
+            // Get the path and add it to our list 
+			if( jrb_find_gen( inodeTree, new_jval_l(buf.st_ino), compare ) == NULL ){
+				jrb_insert_gen( inodeTree, new_jval_l(buf.st_ino), new_jval_i(0), compare ) ;
+				outputFNSize( strlen(relativePath) ) ;
+				fwrite( relativePath, sizeof(char), strlen(relativePath), stdout ) ;
+				outputINode(buf.st_ino) ;
+				outputMode(buf.st_mode) ;
+				outputModTime(buf.st_mtime) ;
 			}
-			else {
-				outputFNSize(strlen(relativePath));
-				outputHex(relativePath);
-				outputINode(buf.st_ino);
+			else{
+				outputFNSize( strlen(relativePath) ) ;
+				fwrite( relativePath, sizeof(char), strlen(relativePath), stdout ) ;
+				outputINode(buf.st_ino) ;
 			}
             
         }
-        else if (strcmp(de->d_name, "..") != 0) {
-            sprintf(newPath, "%s/%s", fileName, de->d_name);
-            sprintf(newRelativePath, "%s/%s", relativePath, de->d_name);
-            exists = lstat(newPath, &buf);
-			outputString = initializeStruct(newRelativePath, newPath, buf);
-
-			if (S_ISDIR(buf.st_mode)) {
-				dll_append(directoryList, new_jval_v((void *) outputString));
+        // If it's in there...
+        else if( strcmp( de->d_name, ".." ) != 0 ){
+            sprintf( newPath, "%s/%s", fileName, de->d_name ) ;
+            sprintf( newRelativePath, "%s/%s", relativePath, de->d_name ) ;
+            int check = lstat( newPath, &buf ) ;
+			outputString = allocate( newRelativePath, newPath, buf ) ;
+            // Get the path and add it to our list 
+			if( S_ISDIR(buf.st_mode) ){
+				dll_append( directoryList, new_jval_v( (void*) outputString ) ) ;
 			}
-			else {
-				dll_append(fileList, new_jval_v((void *) outputString));
+			else{
+				dll_append( fileList, new_jval_v( (void *) outputString) ) ;
 			}   
         }
     }
-
     closedir( directory ) ;
 
-    Dllist tmp;
-    dll_traverse(tmp, fileList) {
-        tempString = (filePaths *) tmp->val.v;
-        outputFNSize(strlen(tempString->relativePath));
-        outputHex(tempString->relativePath);
-        outputINode(tempString->buf.st_ino);
+    // Process the files 
+    Dllist temp ;
+    dll_traverse( temp, fileList ){
+        tempString = ( filePaths* ) temp->val.v ;
+        outputFNSize( strlen( tempString->relativePath ) ) ;
+        fwrite( tempString->relativePath, sizeof(char), strlen( tempString->relativePath ), stdout );
+        outputINode( tempString->buf.st_ino ) ;
 
-        if (jrb_find_gen(inodeTree, new_jval_l(tempString->buf.st_ino), compare) == NULL) {
-            jrb_insert_gen(inodeTree, new_jval_l(tempString->buf.st_ino), new_jval_i(0), compare);
-        
-            outputMode(tempString->buf.st_mode);
-            outputModTime(tempString->buf.st_mtime);
+        if( jrb_find_gen( inodeTree, new_jval_l( tempString->buf.st_ino ), compare ) == NULL ){
+            jrb_insert_gen( inodeTree, new_jval_l( tempString->buf.st_ino ), new_jval_i(0), compare ) ;
+            outputMode( tempString->buf.st_mode ) ;
+            outputModTime( tempString->buf.st_mtime ) ;
 
 			int j = 0 ;
 			for ( int i = 0; i < 8; i++ ){
@@ -177,37 +171,37 @@ void readDirectory( const char *fileName, JRB inodeTree, char *relativePath ){
 			}
 
 			FILE *file = fopen( tempString->absolutePath, "r" ) ;
-    
 			fseek( file, 0, SEEK_END ) ;
-
 			long size = ftell( file ) ;
 			rewind( file ) ;
-			
+	
 			char *buf = ( char* ) malloc( ( size + 1 ) * sizeof(char) ) ;
-
 			fread( buf, size, 1, file ) ;
 			fwrite( buf, 1, size, stdout ) ;
 			fclose( file ) ;
-			free( buf ) ;
-				
-			free(tempString->relativePath);
-			free(tempString->absolutePath);
-			free(tempString);
+			
+            // Start freeing memory
+            free( buf ) ;
+			free( tempString->relativePath ) ;
+			free( tempString->absolutePath ) ;
+			free( tempString ) ;
 		}
 	}
 
-    dll_traverse(tmp, directoryList) {
-        tempString = (filePaths *) tmp->val.v;
-        readDirectory(tempString->absolutePath, inodeTree, tempString->relativePath);
-        free(tempString->relativePath);
-        free(tempString->absolutePath);
-        free(tempString);
+    // Further freeing
+    dll_traverse( temp, directoryList ){
+        tempString = ( filePaths* ) temp->val.v ;
+        readDirectory( tempString->absolutePath, inodeTree, tempString->relativePath ) ;
+        free( tempString->relativePath ) ;
+        free( tempString->absolutePath ) ;
+        free( tempString ) ;
     }
-
-    free(newPath);
-    free(newRelativePath);
-    free_dllist(fileList);
-    free_dllist(directoryList);
+    
+    // Freeing complete
+    free( newPath ) ;
+    free( newRelativePath ) ;
+    free_dllist( fileList ) ;
+    free_dllist( directoryList ) ;
 }
 
 int main( int argc, char *argv[] ){ 
