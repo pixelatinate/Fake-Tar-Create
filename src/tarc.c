@@ -22,7 +22,7 @@
 
 // The structure for all the file information
 typedef struct filePaths{
-    struct stat buf ;
+    struct stat buff ;
     char *absolutePath ;
     char *relativePath ;
 } filePaths ;
@@ -38,61 +38,34 @@ int compare( Jval val1, Jval val2 ){
     return 0 ;
 }
 
-// Prints out the size of the file name
-int outputFNSize( int FNSize ){
+// Prints out the file's mode and file name size
+int outputFour( unsigned short four ){
     int j ;
-
     for ( int i = 0 ; i < 4 ; i++ ){
-        j = FNSize ;
-        FNSize = FNSize >> 8 ;
+        j = four ;
+        four = four >> 8 ;
         fwrite( &j, 1, 1, stdout ) ;
     }
     return 0 ;
 }
 
-// Prints out the file's inode
-int outputINode( unsigned long inode ){
+// Prints out a file's last modification time and inode
+int outputEight( long eight ){
     int j ;
-    
-    for ( int i = 0 ; i < 8 ; i++ ){
-        j = inode ;
-        inode = inode >> 8 ;
-        fwrite( &j, 1, 1, stdout ) ;
-    }
-    return 0 ;
-}
-
-// Prints out the file's mode
-int outputMode( unsigned short mode ){
-    int j ;
-
-    for ( int i = 0 ; i < 4 ; i++ ){
-        j = mode ;
-        mode = mode >> 8 ;
-        fwrite( &j, 1, 1, stdout ) ;
-    }
-    return 0 ;
-}
-
-// Prints out a file's last modification time
-int outputModTime( long modTime ){
-    int j ;
-
     for ( int i = 0; i < 8; i++ ){
-        j = modTime ;
-        modTime = modTime >> 8 ;
+        j = eight ;
+        eight = eight >> 8 ;
         fwrite( &j, 1, 1, stdout ) ;
     }
     return 0 ;
 }
 
-// Initialize/allocate space for the struct
-filePaths *allocate( char *relativePath, char *absolutePath, struct stat buf ){
+// Initializes/allocates space for the struct
+filePaths *allocate( char *relativePath, char *absolutePath, struct stat buff ){
     filePaths *str = malloc( sizeof( filePaths ) ) ;
     str->relativePath = strdup( relativePath ) ;
     str->absolutePath = strdup( absolutePath ) ;
-    str->buf = buf ;
-
+    str->buff = buff ;
     return str ;
 }
 
@@ -101,7 +74,7 @@ void readDirectory( const char *fileName, JRB inodeTree, char *relativePath ){
     Dllist fileList = new_dllist() ;
     Dllist directoryList = new_dllist() ;
     
-    struct stat buf ;
+    struct stat buff ;
     struct dirent *de ;
     
     filePaths *outputString ;
@@ -115,32 +88,33 @@ void readDirectory( const char *fileName, JRB inodeTree, char *relativePath ){
     // Read what's in the directory 
     for( de = readdir(directory) ; de != NULL ; de = readdir(directory) ){
         // If it's in there...
-        if ( strcmp( de->d_name, "." ) == 0 ){
-            int check = lstat( fileName, &buf ) ;
-            // Get the path and add it to our list 
-			if( jrb_find_gen( inodeTree, new_jval_l(buf.st_ino), compare ) == NULL ){
-				jrb_insert_gen( inodeTree, new_jval_l(buf.st_ino), new_jval_i(0), compare ) ;
-				outputFNSize( strlen(relativePath) ) ;
+        if( strcmp( de->d_name, "." ) == 0 ){
+            int check = lstat( fileName, &buff ) ;
+            // ...get the path and add it to our list 
+			if( jrb_find_gen( inodeTree, new_jval_l(buff.st_ino), compare ) == NULL ){
+				jrb_insert_gen( inodeTree, new_jval_l(buff.st_ino), new_jval_i(0), compare ) ;
+				outputFour( strlen(relativePath) ) ;
 				fwrite( relativePath, sizeof(char), strlen(relativePath), stdout ) ;
-				outputINode(buf.st_ino) ;
-				outputMode(buf.st_mode) ;
-				outputModTime(buf.st_mtime) ;
+				outputEight(buff.st_ino) ;
+				outputFour(buff.st_mode) ;
+				outputEight(buff.st_mtime) ;
 			}
+            // We still have to do these if it's not in the path
 			else{
-				outputFNSize( strlen(relativePath) ) ;
+				outputFour( strlen(relativePath) ) ;
 				fwrite( relativePath, sizeof(char), strlen(relativePath), stdout ) ;
-				outputINode(buf.st_ino) ;
+				outputEight(buff.st_ino) ;
 			}
             
         }
-        // If it's in there...
+        // Basically the same as above. If it's in there...
         else if( strcmp( de->d_name, ".." ) != 0 ){
             sprintf( newPath, "%s/%s", fileName, de->d_name ) ;
             sprintf( newRelativePath, "%s/%s", relativePath, de->d_name ) ;
-            int check = lstat( newPath, &buf ) ;
-			outputString = allocate( newRelativePath, newPath, buf ) ;
+            int check = lstat( newPath, &buff ) ;
+			outputString = allocate( newRelativePath, newPath, buff ) ;
             // Get the path and add it to our list 
-			if( S_ISDIR(buf.st_mode) ){
+			if( S_ISDIR(buff.st_mode) ){
 				dll_append( directoryList, new_jval_v( (void*) outputString ) ) ;
 			}
 			else{
@@ -153,20 +127,22 @@ void readDirectory( const char *fileName, JRB inodeTree, char *relativePath ){
     // Process the files 
     Dllist temp ;
     dll_traverse( temp, fileList ){
+        // Writes the stuff to stdout
         tempString = ( filePaths* ) temp->val.v ;
-        outputFNSize( strlen( tempString->relativePath ) ) ;
+        outputFour( strlen( tempString->relativePath ) ) ;
         fwrite( tempString->relativePath, sizeof(char), strlen( tempString->relativePath ), stdout );
-        outputINode( tempString->buf.st_ino ) ;
-
-        if( jrb_find_gen( inodeTree, new_jval_l( tempString->buf.st_ino ), compare ) == NULL ){
-            jrb_insert_gen( inodeTree, new_jval_l( tempString->buf.st_ino ), new_jval_i(0), compare ) ;
-            outputMode( tempString->buf.st_mode ) ;
-            outputModTime( tempString->buf.st_mtime ) ;
+        outputEight( tempString->buff.st_ino ) ;
+        
+        // Add to the tree
+        if( jrb_find_gen( inodeTree, new_jval_l( tempString->buff.st_ino ), compare ) == NULL ){
+            jrb_insert_gen( inodeTree, new_jval_l( tempString->buff.st_ino ), new_jval_i(0), compare ) ;
+            outputFour( tempString->buff.st_mode ) ;
+            outputEight( tempString->buff.st_mtime ) ;
 
 			int j = 0 ;
 			for ( int i = 0; i < 8; i++ ){
-				j = tempString->buf.st_size ;
-				tempString->buf.st_size = tempString->buf.st_size >> 8 ;
+				j = tempString->buff.st_size ;
+				tempString->buff.st_size = tempString->buff.st_size >> 8 ;
 				fwrite( &j, 1, 1, stdout ) ;
 			}
 
@@ -175,13 +151,15 @@ void readDirectory( const char *fileName, JRB inodeTree, char *relativePath ){
 			long size = ftell( file ) ;
 			rewind( file ) ;
 	
-			char *buf = ( char* ) malloc( ( size + 1 ) * sizeof(char) ) ;
-			fread( buf, size, 1, file ) ;
-			fwrite( buf, 1, size, stdout ) ;
+			char *buff = ( char* ) malloc( ( size + 1 ) * sizeof(char) ) ;
+			fread( buff, size, 1, file ) ;
+			fwrite( buff, 1, size, stdout ) ;
 			fclose( file ) ;
 			
             // Start freeing memory
-            free( buf ) ;
+            // Honestly I should have made this it's own function but 
+            //      it was weirdly buggy so I just left it like this 
+            free( buff ) ;
 			free( tempString->relativePath ) ;
 			free( tempString->absolutePath ) ;
 			free( tempString ) ;
