@@ -27,17 +27,6 @@ typedef struct filePaths{
     char *relativePath ;
 } filePaths ;
 
-// Compares jvals 
-int compare( Jval val1, Jval val2 ){
-    if( val1.l < val2.l ){
-        return -1 ;
-    }
-    if( val1.l > val2.l ){
-        return 1 ;
-    }
-    return 0 ;
-}
-
 // Prints out the file's mode and file name size
 int outputFour( unsigned short four ){
     int j ;
